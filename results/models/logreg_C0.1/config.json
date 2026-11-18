@@ -1,0 +1,37 @@
+{
+  "name": "logreg_C0.1",
+  "family": "linear",
+  "seed": 42,
+  "feature_cols": [
+    "dist_m",
+    "dist_rel_min",
+    "dist_rank",
+    "proj_t",
+    "along_m",
+    "rem_m",
+    "arc_len_m",
+    "heading_cos",
+    "heading_valid",
+    "is_oneway",
+    "turn_angle",
+    "deg_from",
+    "deg_to",
+    "n_candidates",
+    "speed_ms",
+    "dt_s",
+    "gap_before",
+    "win3_mean_dist",
+    "win3_max_dist",
+    "win8_mean_dist"
+  ],
+  "config": {
+    "C": 0.1,
+    "penalty": "l2",
+    "solver": "lbfgs",
+    "class_weight": "none",
+    "max_iter": 500,
+    "preprocessing": "median imputer + StandardScaler, fitted inside each CV fold",
+    "objective": "L2-regularised log loss (binary cross-entropy)",
+    "threshold": 0.5
+  }
+}
