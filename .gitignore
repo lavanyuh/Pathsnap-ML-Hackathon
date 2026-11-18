@@ -5,3 +5,4 @@ __pycache__/
 .env
 .venv/
 artifacts/*.joblib
+results/models/*/model.joblib

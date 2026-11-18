@@ -1,0 +1,35 @@
+{
+  "name": "lgbm",
+  "family": "boosting",
+  "seed": 42,
+  "feature_cols": [
+    "dist_m",
+    "dist_rel_min",
+    "dist_rank",
+    "proj_t",
+    "along_m",
+    "rem_m",
+    "arc_len_m",
+    "heading_cos",
+    "heading_valid",
+    "is_oneway",
+    "turn_angle",
+    "deg_from",
+    "deg_to",
+    "n_candidates",
+    "speed_ms",
+    "dt_s",
+    "gap_before",
+    "win3_mean_dist",
+    "win3_max_dist",
+    "win8_mean_dist"
+  ],
+  "config": {
+    "n_estimators": 500,
+    "learning_rate": 0.05,
+    "num_leaves": 31,
+    "subsample": 0.8,
+    "subsample_freq": 1,
+    "colsample_bytree": 0.8
+  }
+}
