@@ -1,0 +1,3 @@
+split,radius_m,trips,points,labelable_points,feature_rows,mean_candidates,points_with_zero_candidates,candidate_miss_rate_labelable,positive_rate_labelable_rows
+train,50.0,78,183260,182153,1763974,9.62552657426607,1665,0.007872502786119395,0.10272111279547688
+student_test,50.0,10,19160,19143,209579,10.938361169102297,0,0.0005223841613122282,0.09130909941252548
