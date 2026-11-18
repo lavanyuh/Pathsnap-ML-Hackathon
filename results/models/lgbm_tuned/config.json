@@ -1,0 +1,39 @@
+{
+  "name": "lgbm_tuned",
+  "family": "LightGBM (Bayesian Optimisation)",
+  "seed": 42,
+  "feature_cols": [
+    "dist_m",
+    "dist_rel_min",
+    "dist_rank",
+    "proj_t",
+    "along_m",
+    "rem_m",
+    "arc_len_m",
+    "heading_cos",
+    "heading_valid",
+    "is_oneway",
+    "turn_angle",
+    "deg_from",
+    "deg_to",
+    "n_candidates",
+    "speed_ms",
+    "dt_s",
+    "gap_before",
+    "win3_mean_dist",
+    "win3_max_dist",
+    "win8_mean_dist"
+  ],
+  "config": {
+    "max_depth": 10,
+    "n_estimators": 427,
+    "learning_rate": 0.04245746353969832,
+    "num_leaves": 38,
+    "min_child_samples": 33,
+    "subsample": 0.9696724714457338,
+    "colsample_bytree": 0.8623798672503351,
+    "reg_alpha": 4.236312186179467,
+    "reg_lambda": 2.9460287579093287,
+    "subsample_freq": 1
+  }
+}
