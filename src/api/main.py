@@ -4,15 +4,18 @@ Runs on Laptop 1 during evaluation.
 Accepts trip evaluation requests from Laptop 2 UI, runs end-to-end inference,
 and returns prediction metrics and route geometry.
 """
+import os
 import logging
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
+from time import perf_counter
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from ..data.loader import list_trips
 from ..models.pipeline import MapMatchingPipeline, DEFAULT_DATA_ROOT, DEFAULT_MODEL_PATH
@@ -23,10 +26,10 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%H:%M:%S"
 )
-logger = logging.getLogger("PathSnapAPI")
+logger = logging.getLogger("pathsnap")
 
 app = FastAPI(
-    title="PathSnap Map-Matching API",
+    title="PathSnap API",
     description="Distributed candidate classifier + HMM/Viterbi map matching service.",
     version="2.0.0"
 )
@@ -35,12 +38,40 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Global pipeline instance (lazy loaded)
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = perf_counter()
+    response = await call_next(request)
+    elapsed = perf_counter() - start
+    logger.info(
+        "%s %s | status=%s | time=%.4fs",
+        request.method,
+        request.url.path,
+        response.status_code,
+        elapsed
+    )
+    return response
+
+
+# --------------------------------------------------
+# REQUEST MODEL
+# --------------------------------------------------
+
+class PredictRequest(BaseModel):
+    trip_id: str
+    split: Optional[str] = "evaluator_test"
+
+
+# --------------------------------------------------
+# PIPELINE LAZY LOADER
+# --------------------------------------------------
+
 pipeline: Optional[MapMatchingPipeline] = None
 
 
@@ -53,31 +84,118 @@ def get_pipeline() -> MapMatchingPipeline:
     return pipeline
 
 
+# --------------------------------------------------
+# HEALTH CHECK
+# --------------------------------------------------
+
+@app.get("/health")
 @app.get("/api/health")
-def health_check():
+def health():
     pipe = get_pipeline()
     return {
-        "status": "healthy",
+        "status": "ok",
+        "message": "PathSnap API is running",
         "system": "PathSnap Map-Matching Engine",
         "model": pipe.model_name,
         "dataset_root": str(pipe.data_root)
     }
 
 
+# --------------------------------------------------
+# LIST AVAILABLE TRIPS
+# --------------------------------------------------
+
+@app.get("/trips")
 @app.get("/api/trips")
-def get_evaluation_trips(split: str = Query("evaluator_test", description="Dataset split (evaluator_test, student_test, train)")):
+def get_trips(split: str = Query("evaluator_test", description="Dataset split (evaluator_test, student_test, train)")):
     """List available trips for evaluation."""
+    pipe = get_pipeline()
     try:
-        trips = list_trips(str(DEFAULT_DATA_ROOT), split)
+        # Check evaluator_test first, then fallback to student_test if needed
+        trips = list_trips(str(pipe.data_root), split)
         return {
+            "status": "ok",
             "split": split,
             "count": len(trips),
             "trips": trips
         }
     except Exception as e:
         logger.error(f"Error listing trips for split {split}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # If evaluator_test directory was missing, try student_test
+        try:
+            trips = list_trips(str(pipe.data_root), "student_test")
+            return {"status": "ok", "split": "student_test", "count": len(trips), "trips": trips}
+        except Exception:
+            raise HTTPException(status_code=500, detail=str(e))
 
+
+# --------------------------------------------------
+# COMPATIBILITY PREDICT ENDPOINT (Teammate UI Format)
+# --------------------------------------------------
+
+@app.post("/predict")
+def predict_trip_legacy(request: PredictRequest):
+    """Prediction endpoint compatible with teammate UI."""
+    pipe = get_pipeline()
+    trip_id = request.trip_id
+    split = request.split or "evaluator_test"
+
+    print("\n" + "=" * 65)
+    print(f"🚀 [INFERENCE REQUEST] Received evaluation for Trip: {trip_id} (Split: {split})")
+    print("=" * 65)
+
+    t0 = time.time()
+    try:
+        result = pipe.process_trip(trip_id=trip_id, split=split)
+    except Exception as e:
+        logger.error(f"Error processing trip {trip_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Inference error: {str(e)}")
+
+    duration_s = time.time() - t0
+    metrics = result.get("metrics", {})
+    acc_info = metrics.get("accuracy", {})
+    seq_info = metrics.get("sequence", {})
+    geo = result.get("geo", {})
+
+    print(f"✅ [COMPLETED] Trip {trip_id} processed in {duration_s*1000:.1f}ms")
+    print(f"   • HMM Pointwise Accuracy:       {acc_info.get('hmm_pointwise_accuracy', 'N/A')}%")
+    print(f"   • Classifier-Only Accuracy:     {acc_info.get('classifier_pointwise_accuracy', 'N/A')}%")
+    print(f"   • Route Continuity:             {seq_info.get('continuity', 'N/A')}%")
+    print("=" * 65 + "\n")
+
+    # Format coordinates as [lon, lat] per teammate UI expectation
+    gps_lon_lat = [[pt[1], pt[0]] for pt in geo.get("gps_track", [])]
+    pred_lon_lat = []
+    for seg in geo.get("predicted_route", []):
+        pred_lon_lat.append([seg[0][1], seg[0][0]])
+        pred_lon_lat.append([seg[1][1], seg[1][0]])
+
+    return {
+        "trip_id": trip_id,
+        "status": f"Evaluation Complete (Accuracy: {acc_info.get('hmm_pointwise_accuracy', 'N/A')}%)",
+        "predicted_route": pred_lon_lat,
+        "gps_points": gps_lon_lat,
+        "metrics": {
+            "hmm_accuracy": acc_info.get("hmm_pointwise_accuracy"),
+            "classifier_accuracy": acc_info.get("classifier_pointwise_accuracy"),
+            "hmm_gain": acc_info.get("hmm_accuracy_gain"),
+            "continuity": seq_info.get("continuity"),
+            "breaks": seq_info.get("breaks"),
+            "f1_score": seq_info.get("f1_score"),
+            "precision": seq_info.get("precision"),
+            "recall": seq_info.get("recall"),
+            "points": metrics.get("n_gps_points")
+        },
+        "timings": {
+            "total_time_s": round(duration_s, 4),
+            "breakdown_ms": metrics.get("breakdown_ms")
+        }
+    }
+
+
+# --------------------------------------------------
+# ENHANCED EVALUATION ENDPOINT (Dashboard Format)
+# --------------------------------------------------
 
 @app.post("/api/evaluate/{trip_id}")
 @app.get("/api/evaluate/{trip_id}")
@@ -86,7 +204,7 @@ def evaluate_trip(
     split: str = Query("evaluator_test", description="Dataset partition"),
     radius: float = Query(50.0, description="Candidate search radius in metres")
 ):
-    """Execute complete end-to-end map matching on a selected trip."""
+    """Execute complete end-to-end map matching on a selected trip with full geo layers."""
     pipe = get_pipeline()
 
     print("\n" + "=" * 65)
