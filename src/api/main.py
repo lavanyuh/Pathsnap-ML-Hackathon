@@ -278,19 +278,6 @@ def get_trip_folium_map(
         ).add_to(pred_layer)
     pred_layer.add_to(m)
 
-    # Layer: Reference Route (Ground Truth)
-    if geo["reference_route"]:
-        ref_layer = folium.FeatureGroup(name="Reference Ground Truth (.route)", show=True)
-        for seg in geo["reference_route"]:
-            folium.PolyLine(
-                locations=seg,
-                color="#f59e0b",
-                weight=3,
-                opacity=0.9,
-                dash_array="6, 6"
-            ).add_to(ref_layer)
-        ref_layer.add_to(m)
-
     folium.LayerControl(collapsed=False).add_to(m)
     return m.get_root().render()
 

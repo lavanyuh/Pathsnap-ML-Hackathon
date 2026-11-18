@@ -183,13 +183,6 @@
               </span>
             </label>
 
-            <label class="flex items-center space-x-1.5 cursor-pointer select-none">
-              <input id="toggleRef" type="checkbox" checked onchange="toggleLayers()" class="rounded bg-slate-700 border-slate-600 text-amber-500 focus:ring-0">
-              <span class="flex items-center text-slate-300">
-                <span class="w-3.5 h-1 bg-amber-500 border-b border-dashed mr-1.5 inline-block"></span> Ground Truth (.route)
-              </span>
-            </label>
-
             <button onclick="recenterMap()" class="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded text-xs transition">
               <i class="fa-solid fa-expand mr-1"></i> Fit Map
             </button>
@@ -245,7 +238,6 @@
 
       gpsLayerGroup = L.layerGroup().addTo(map);
       predLayerGroup = L.layerGroup().addTo(map);
-      refLayerGroup = L.layerGroup().addTo(map);
     }
 
     // Connect & Test API
@@ -381,7 +373,6 @@
     function renderMapGeo(geo) {
       gpsLayerGroup.clearLayers();
       predLayerGroup.clearLayers();
-      refLayerGroup.clearLayers();
 
       if (!geo) return;
 
@@ -398,19 +389,7 @@
         });
       }
 
-      // 2. Reference Route (Amber Dashed Line)
-      if (geo.reference_route && geo.reference_route.length) {
-        geo.reference_route.forEach(seg => {
-          L.polyline(seg, {
-            color: "#f59e0b",
-            weight: 3.5,
-            opacity: 0.9,
-            dashArray: "6, 6"
-          }).addTo(refLayerGroup);
-        });
-      }
-
-      // 3. Predicted Route (Emerald Green Solid Line)
+      // 2. Predicted Route (Emerald Green Solid Line)
       if (geo.predicted_route && geo.predicted_route.length) {
         geo.predicted_route.forEach(seg => {
           L.polyline(seg, {
@@ -437,11 +416,9 @@
     function toggleLayers() {
       const showGps = document.getElementById("toggleGps").checked;
       const showPred = document.getElementById("togglePred").checked;
-      const showRef = document.getElementById("toggleRef").checked;
 
       if (showGps) map.addLayer(gpsLayerGroup); else map.removeLayer(gpsLayerGroup);
       if (showPred) map.addLayer(predLayerGroup); else map.removeLayer(predLayerGroup);
-      if (showRef) map.addLayer(refLayerGroup); else map.removeLayer(refLayerGroup);
     }
 
     // Auto Init on Page Load

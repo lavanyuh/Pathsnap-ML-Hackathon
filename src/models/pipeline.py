@@ -169,6 +169,12 @@ class MapMatchingPipeline:
             }
         }
 
+        # Collapse consecutive repeated arc IDs (deduplicate dwell time on same road)
+        collapsed_pred_arcs = []
+        for a in pred_hmm:
+            if a >= 0 and (not collapsed_pred_arcs or a != collapsed_pred_arcs[-1]):
+                collapsed_pred_arcs.append(int(a))
+
         if has_ground_truth and labels_df is not None:
             valid = pts.labelable.to_numpy(bool) & pts.true_in_candidates.to_numpy(bool) & (pred_hmm >= 0)
             actual = pts.true_arc_id.to_numpy(int)[valid]
@@ -180,7 +186,7 @@ class MapMatchingPipeline:
                 hmm_acc = 0.0
                 top1_acc = 0.0
 
-            seq_prec, seq_rec, seq_f1 = sequence_metrics(net, pred_hmm, trip.route)
+            seq_prec, seq_rec, seq_f1 = sequence_metrics(net, collapsed_pred_arcs, trip.route)
             cont, breaks = route_continuity(net, pred_hmm)
 
             metrics["accuracy"] = {
@@ -207,12 +213,6 @@ class MapMatchingPipeline:
         nodes = trip.nodes  # [lon, lat]
         arcs = trip.arcs    # [from_node, to_node]
 
-        # Unique predicted arcs in chronological order
-        collapsed_pred_arcs = []
-        for a in pred_hmm:
-            if a >= 0 and (not collapsed_pred_arcs or a != collapsed_pred_arcs[-1]):
-                collapsed_pred_arcs.append(int(a))
-
         pred_route_lines = []
         for arc_id in collapsed_pred_arcs:
             if 0 <= arc_id < len(arcs):
@@ -222,26 +222,16 @@ class MapMatchingPipeline:
                     [float(nodes[v, 1]), float(nodes[v, 0])]
                 ])
 
-        ref_route_lines = []
-        if has_ground_truth:
-            for arc_id in trip.route:
-                if 0 <= arc_id < len(arcs):
-                    u, v = arcs[arc_id]
-                    ref_route_lines.append([
-                        [float(nodes[u, 1]), float(nodes[u, 0])],
-                        [float(nodes[v, 1]), float(nodes[v, 0])]
-                    ])
-
         min_lat, min_lon = float(trip.track[:, 1].min()), float(trip.track[:, 0].min())
         max_lat, max_lon = float(trip.track[:, 1].max()), float(trip.track[:, 0].max())
         center = [(min_lat + max_lat) / 2.0, (min_lon + max_lon) / 2.0]
 
+        # NOTE: reference_route geometry is omitted to comply with strict server-side evaluation integrity rules
         geo = {
             "center": center,
             "bounds": [[min_lat, min_lon], [max_lat, max_lon]],
             "gps_track": gps_coords,
-            "predicted_route": pred_route_lines,
-            "reference_route": ref_route_lines
+            "predicted_route": pred_route_lines
         }
 
         return {
