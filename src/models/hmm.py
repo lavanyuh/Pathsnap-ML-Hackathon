@@ -71,3 +71,46 @@ def match_candidates(emission_probs, candidate_arc_ids, transition_probs):
         return np.array([], dtype=int)
 
     return candidate_arc_ids[np.arange(len(path)), path]
+def viterbi_decode_variable(emissions, transitions):
+    """
+    Viterbi decoder supporting a different number of candidates
+    at each GPS observation.
+
+    emissions: list of probability arrays, one per GPS point.
+    transitions: list of matrices between consecutive GPS points.
+    Returns: best candidate index at each point.
+    """
+    if len(emissions) == 0:
+        return np.array([], dtype=int)
+
+    if len(transitions) != len(emissions) - 1:
+        raise ValueError("Invalid number of transition matrices")
+
+    log_emissions = [
+        np.log(np.clip(np.asarray(e, dtype=float), 1e-12, 1.0))
+        for e in emissions
+    ]
+
+    scores = log_emissions[0].copy()
+    backpointers = []
+
+    for t in range(1, len(emissions)):
+        trans = np.asarray(transitions[t - 1], dtype=float)
+
+        if trans.shape != (len(emissions[t - 1]), len(emissions[t])):
+            raise ValueError("Invalid transition matrix shape")
+
+        log_trans = np.log(np.clip(trans, 1e-12, 1.0))
+
+        candidates = scores[:, None] + log_trans
+        backpointers.append(np.argmax(candidates, axis=0))
+
+        scores = np.max(candidates, axis=0) + log_emissions[t]
+
+    path = np.zeros(len(emissions), dtype=int)
+    path[-1] = np.argmax(scores)
+
+    for t in range(len(emissions) - 1, 0, -1):
+        path[t - 1] = backpointers[t - 1][path[t]]
+
+    return path

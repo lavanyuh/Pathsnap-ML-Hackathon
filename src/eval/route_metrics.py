@@ -52,7 +52,13 @@ def route_continuity(network, pred_arcs):
 
             total += 1
 
-            if B[previous_arc] == A[arc]:
+            is_conn = False
+            if hasattr(network, 'arcs') and network.arcs is not None:
+                is_conn = (network.arcs[previous_arc, 1] == network.arcs[arc, 0])
+            else:
+                is_conn = bool(np.allclose(B[previous_arc], A[arc], atol=1e-3))
+
+            if is_conn:
                 connected += 1
             else:
                 breaks += 1

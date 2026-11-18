@@ -1,0 +1,6 @@
+Algorithm Family,Model,Accuracy,Precision,Recall,Positive F1,Macro F1,ROC-AUC,Train Time (s),Inference Time (s)
+Logistic,Logistic Regression (L2),0.925,0.5527,0.9392,0.6959,0.8266,0.9835,0.38,0.01
+Gaussian,Gaussian Naive Bayes,0.9115,0.5087,0.9164,0.6542,0.8018,0.9645,0.05,0.03
+Random,Random Forest (100 trees),0.9675,0.7533,0.9582,0.8435,0.9127,0.9938,8.74,0.41
+HistGradientBoosting,HistGradientBoosting,0.9784,0.8875,0.8745,0.8809,0.9345,0.9943,2.67,0.42
+LightGBM,LightGBM (Tuned - Final),0.97,0.7699,0.9579,0.8537,0.9185,0.9944,2.76,0.58

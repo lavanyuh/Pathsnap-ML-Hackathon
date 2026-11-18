@@ -8,3 +8,8 @@ pyproj
 networkx
 shapely
 pyarrow
+lightgbm
+optuna
+fastapi
+uvicorn
+pydantic

@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PathSnap - Distributed Map-Matching & Route Reconstruction</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <style>
+    #map { height: calc(100vh - 270px); min-height: 480px; width: 100%; border-radius: 0.75rem; z-index: 10; }
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    .pulse-glow { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 flex flex-col h-screen overflow-hidden font-sans">
+
+  <!-- Header -->
+  <header class="bg-slate-800/90 backdrop-blur border-b border-slate-700 px-6 py-3 flex items-center justify-between shrink-0">
+    <div class="flex items-center space-x-3">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+        <i class="fa-solid fa-route text-slate-950 text-xl font-bold"></i>
+      </div>
+      <div>
+        <div class="flex items-center space-x-2">
+          <h1 class="text-lg font-bold text-white tracking-tight">PathSnap</h1>
+          <span class="px-2 py-0.5 rounded text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">Phase 2: Final Evaluation</span>
+          <span class="px-2 py-0.5 rounded text-xs font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/30">Model: LightGBM (Tuned)</span>
+        </div>
+        <p class="text-xs text-slate-400">Distributed GPS Map-Matching: Candidate Classifier + HMM / Viterbi</p>
+      </div>
+    </div>
+
+    <!-- API Config & Status -->
+    <div class="flex items-center space-x-4">
+      <div class="flex items-center bg-slate-950/60 rounded-lg border border-slate-700 px-3 py-1.5 text-xs space-x-2">
+        <span class="text-slate-400 font-medium">API Endpoint:</span>
+        <input id="apiUrlInput" type="text" value="http://localhost:8000" class="bg-transparent border-none text-emerald-400 font-mono focus:outline-none w-48 text-xs" />
+        <button onclick="testConnection()" class="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs transition">Connect</button>
+      </div>
+      <div id="connectionBadge" class="flex items-center space-x-2 bg-slate-950/80 px-3 py-1.5 rounded-lg border border-slate-700">
+        <span id="statusDot" class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+        <span id="statusText" class="text-xs font-medium text-slate-300">Checking API...</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <div class="flex flex-1 overflow-hidden">
+
+    <!-- Left Sidebar: Reserved 10 Evaluation Trips -->
+    <aside class="w-80 bg-slate-800/50 border-r border-slate-700 flex flex-col shrink-0">
+      <div class="p-4 border-b border-slate-700">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center">
+            <i class="fa-solid fa-list-check mr-2 text-emerald-400"></i> Reserved Evaluation Trips
+          </h2>
+          <span class="text-xs bg-slate-700 px-2 py-0.5 rounded text-slate-300">10 Trips</span>
+        </div>
+        <p class="text-xs text-slate-400">Select any trip below to run server-side inference on Laptop 1.</p>
+      </div>
+
+      <div id="tripList" class="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2">
+        <!-- Trip Cards Loaded Dynamically -->
+        <div class="text-center py-8 text-slate-500 text-sm">
+          <i class="fa-solid fa-circle-notch fa-spin text-xl mb-2 text-emerald-400"></i>
+          <p>Loading evaluation trips...</p>
+        </div>
+      </div>
+
+      <!-- Live Server Execution Logs Info -->
+      <div class="p-3 bg-slate-900/60 border-t border-slate-700 text-xs text-slate-400 space-y-1">
+        <div class="flex items-center justify-between">
+          <span class="text-slate-500">Architecture:</span>
+          <span class="text-slate-300 font-mono">Two-Laptop Setup</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-slate-500">Laptop 1:</span>
+          <span class="text-emerald-400">FastAPI + Model + Ground Truth</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-slate-500">Laptop 2:</span>
+          <span class="text-blue-400">Evaluator UI (Client)</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 flex flex-col overflow-y-auto custom-scrollbar p-5 space-y-4">
+
+      <!-- Metrics Row -->
+      <div class="grid grid-cols-6 gap-3 shrink-0">
+        <!-- HMM Accuracy -->
+        <div class="bg-slate-800/80 border border-slate-700/80 rounded-xl p-3 shadow relative overflow-hidden">
+          <div class="flex items-center justify-between text-xs text-slate-400 mb-1">
+            <span>HMM Accuracy</span>
+            <i class="fa-solid fa-bullseye text-emerald-400"></i>
+          </div>
+          <div id="metricHmmAcc" class="text-2xl font-bold text-white tracking-tight">--</div>
+          <div id="metricHmmGain" class="text-xs text-emerald-400 font-medium mt-0.5">--</div>
+        </div>
+
+        <!-- Classifier Only Accuracy -->
+        <div class="bg-slate-800/80 border border-slate-700/80 rounded-xl p-3 shadow relative overflow-hidden">
+          <div class="flex items-center justify-between text-xs text-slate-400 mb-1">
+            <span>Classifier Top-1</span>
+            <i class="fa-solid fa-microchip text-blue-400"></i>
+          </div>
+          <div id="metricClfAcc" class="text-2xl font-bold text-white tracking-tight">--</div>
+          <div class="text-xs text-slate-400 mt-0.5">Before Viterbi decoding</div>
+        </div>
+
+        <!-- Route Continuity -->
+        <div class="bg-slate-800/80 border border-slate-700/80 rounded-xl p-3 shadow relative overflow-hidden">
+          <div class="flex items-center justify-between text-xs text-slate-400 mb-1">
+            <span>Route Continuity</span>
+            <i class="fa-solid fa-link text-indigo-400"></i>
+          </div>
+          <div id="metricContinuity" class="text-2xl font-bold text-white tracking-tight">--</div>
+          <div id="metricBreaks" class="text-xs text-slate-400 mt-0.5">--</div>
+        </div>
+
+        <!-- Sequence F1 Score -->
+        <div class="bg-slate-800/80 border border-slate-700/80 rounded-xl p-3 shadow relative overflow-hidden">
+          <div class="flex items-center justify-between text-xs text-slate-400 mb-1">
+            <span>Sequence F1</span>
+            <i class="fa-solid fa-chart-line text-purple-400"></i>
+          </div>
+          <div id="metricF1" class="text-2xl font-bold text-white tracking-tight">--</div>
+          <div id="metricPrecRec" class="text-xs text-slate-400 mt-0.5">--</div>
+        </div>
+
+        <!-- GPS Points Processed -->
+        <div class="bg-slate-800/80 border border-slate-700/80 rounded-xl p-3 shadow relative overflow-hidden">
+          <div class="flex items-center justify-between text-xs text-slate-400 mb-1">
+            <span>Observations</span>
+            <i class="fa-solid fa-location-crosshairs text-amber-400"></i>
+          </div>
+          <div id="metricPoints" class="text-2xl font-bold text-white tracking-tight">--</div>
+          <div id="metricCandidates" class="text-xs text-slate-400 mt-0.5">--</div>
+        </div>
+
+        <!-- Inference Latency -->
+        <div class="bg-slate-800/80 border border-slate-700/80 rounded-xl p-3 shadow relative overflow-hidden">
+          <div class="flex items-center justify-between text-xs text-slate-400 mb-1">
+            <span>Inference Latency</span>
+            <i class="fa-solid fa-stopwatch text-teal-400"></i>
+          </div>
+          <div id="metricLatency" class="text-2xl font-bold text-white tracking-tight">--</div>
+          <div id="metricThroughput" class="text-xs text-emerald-400 mt-0.5">--</div>
+        </div>
+      </div>
+
+      <!-- Map & Controls Card -->
+      <div class="bg-slate-800/80 border border-slate-700 rounded-xl p-4 flex-1 flex flex-col shadow">
+        <!-- Map Header Controls -->
+        <div class="flex items-center justify-between mb-3 shrink-0">
+          <div class="flex items-center space-x-3">
+            <span class="text-sm font-semibold text-white flex items-center">
+              <i class="fa-solid fa-map-location-dot text-emerald-400 mr-2"></i>
+              <span id="mapTitle">Trip Visualization</span>
+            </span>
+            <span id="activeTripBadge" class="hidden text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded font-mono">--</span>
+          </div>
+
+          <!-- Legend / Layer Toggles -->
+          <div class="flex items-center space-x-4 text-xs">
+            <label class="flex items-center space-x-1.5 cursor-pointer select-none">
+              <input id="toggleGps" type="checkbox" checked onchange="toggleLayers()" class="rounded bg-slate-700 border-slate-600 text-blue-500 focus:ring-0">
+              <span class="flex items-center text-slate-300">
+                <span class="w-2.5 h-2.5 rounded-full bg-blue-500 mr-1.5 inline-block"></span> GPS Track
+              </span>
+            </label>
+
+            <label class="flex items-center space-x-1.5 cursor-pointer select-none">
+              <input id="togglePred" type="checkbox" checked onchange="toggleLayers()" class="rounded bg-slate-700 border-slate-600 text-emerald-500 focus:ring-0">
+              <span class="flex items-center text-slate-300">
+                <span class="w-3.5 h-1 bg-emerald-500 mr-1.5 inline-block rounded"></span> Predicted Route (HMM)
+              </span>
+            </label>
+
+            <label class="flex items-center space-x-1.5 cursor-pointer select-none">
+              <input id="toggleRef" type="checkbox" checked onchange="toggleLayers()" class="rounded bg-slate-700 border-slate-600 text-amber-500 focus:ring-0">
+              <span class="flex items-center text-slate-300">
+                <span class="w-3.5 h-1 bg-amber-500 border-b border-dashed mr-1.5 inline-block"></span> Ground Truth (.route)
+              </span>
+            </label>
+
+            <button onclick="recenterMap()" class="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded text-xs transition">
+              <i class="fa-solid fa-expand mr-1"></i> Fit Map
+            </button>
+          </div>
+        </div>
+
+        <!-- Leaflet Map Container -->
+        <div class="relative flex-1 rounded-xl overflow-hidden border border-slate-700/60 bg-slate-950">
+          <div id="map"></div>
+          
+          <!-- Loading Overlay -->
+          <div id="loadingOverlay" class="hidden absolute inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center space-y-3">
+            <i class="fa-solid fa-spinner fa-spin text-4xl text-emerald-400"></i>
+            <div class="text-center">
+              <p class="font-semibold text-white text-sm" id="loadingText">Processing GPS Observations on Laptop 1...</p>
+              <p class="text-xs text-slate-400 mt-1">LightGBM Candidate Classification &rarr; HMM Viterbi Sequential Decoding</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <script>
+    // State
+    let apiBase = "http://localhost:8000";
+    let map = null;
+    let gpsLayerGroup = null;
+    let predLayerGroup = null;
+    let refLayerGroup = null;
+    let currentBounds = null;
+    let selectedTripId = null;
+
+    const DEFAULT_EVAL_TRIPS = [
+      "00000015", "00000017", "00000023", "00000030", "00000049",
+      "00000059", "00000067", "00000073", "00000087", "00000094"
+    ];
+
+    // Initialize Map
+    function initMap() {
+      map = L.map('map', {
+        zoomControl: true,
+        attributionControl: false
+      }).setView([12.9716, 77.5946], 13);
+
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        maxZoom: 19
+      }).addTo(map);
+
+      gpsLayerGroup = L.layerGroup().addTo(map);
+      predLayerGroup = L.layerGroup().addTo(map);
+      refLayerGroup = L.layerGroup().addTo(map);
+    }
+
+    // Connect & Test API
+    async function testConnection() {
+      apiBase = document.getElementById("apiUrlInput").value.trim().replace(/\/$/, "");
+      const dot = document.getElementById("statusDot");
+      const text = document.getElementById("statusText");
+
+      dot.className = "w-2.5 h-2.5 rounded-full bg-amber-400 pulse-glow";
+      text.innerText = "Connecting...";
+
+      try {
+        const res = await fetch(`${apiBase}/api/health`, { signal: AbortSignal.timeout(3000) });
+        if (res.ok) {
+          const data = await res.json();
+          dot.className = "w-2.5 h-2.5 rounded-full bg-emerald-400";
+          text.innerText = `Connected (${data.model || 'LGBM'})`;
+          loadTrips();
+        } else {
+          throw new Error("API returned status " + res.status);
+        }
+      } catch (err) {
+        dot.className = "w-2.5 h-2.5 rounded-full bg-red-400";
+        text.innerText = "Offline (Click Connect)";
+        renderTripList(DEFAULT_EVAL_TRIPS);
+      }
+    }
+
+    // Load Available Evaluation Trips from API
+    async function loadTrips() {
+      try {
+        const res = await fetch(`${apiBase}/api/trips?split=evaluator_test`);
+        const data = await res.json();
+        renderTripList(data.trips && data.trips.length ? data.trips : DEFAULT_EVAL_TRIPS);
+      } catch (e) {
+        renderTripList(DEFAULT_EVAL_TRIPS);
+      }
+    }
+
+    // Render Trip Cards in Sidebar
+    function renderTripList(trips) {
+      const container = document.getElementById("tripList");
+      container.innerHTML = "";
+
+      trips.forEach((tid, idx) => {
+        const card = document.createElement("button");
+        card.id = `trip-card-${tid}`;
+        card.className = "w-full text-left p-3 rounded-xl border border-slate-700/60 bg-slate-900/60 hover:bg-slate-700/50 hover:border-emerald-500/50 transition flex items-center justify-between group";
+        card.onclick = () => selectTrip(tid);
+
+        card.innerHTML = `
+          <div class="flex items-center space-x-3">
+            <div class="w-7 h-7 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-mono text-slate-400 group-hover:text-emerald-400 group-hover:border-emerald-500/40">
+              ${idx + 1}
+            </div>
+            <div>
+              <div class="text-xs font-mono font-bold text-white group-hover:text-emerald-400">Trip ${tid}</div>
+              <div class="text-[10px] text-slate-500">Reserved Evaluator Set</div>
+            </div>
+          </div>
+          <i class="fa-solid fa-chevron-right text-xs text-slate-600 group-hover:text-emerald-400 group-hover:translate-x-0.5 transition-transform"></i>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    // Select and Run Inference for a Trip
+    async function selectTrip(tripId) {
+      selectedTripId = tripId;
+
+      // Update card styling
+      document.querySelectorAll("[id^='trip-card-']").forEach(el => {
+        el.classList.remove("border-emerald-500", "bg-emerald-500/10");
+      });
+      const activeCard = document.getElementById(`trip-card-${tripId}`);
+      if (activeCard) {
+        activeCard.classList.add("border-emerald-500", "bg-emerald-500/10");
+      }
+
+      document.getElementById("activeTripBadge").innerText = `Trip ${tripId}`;
+      document.getElementById("activeTripBadge").classList.remove("hidden");
+      document.getElementById("mapTitle").innerText = `Trip ${tripId} Map Matching`;
+
+      // Show loader
+      const overlay = document.getElementById("loadingOverlay");
+      overlay.classList.remove("hidden");
+
+      try {
+        const res = await fetch(`${apiBase}/api/evaluate/${tripId}?split=evaluator_test`);
+        if (!res.ok) throw new Error("Inference failed: " + res.statusText);
+        const data = await res.json();
+        displayResults(data);
+      } catch (err) {
+        alert("Error executing inference on API: " + err.message + "\nCheck if Laptop 1 API is running.");
+      } finally {
+        overlay.classList.add("hidden");
+      }
+    }
+
+    // Display Results & Map
+    function displayResults(data) {
+      const m = data.metrics || {};
+      const acc = m.accuracy || {};
+      const seq = m.sequence || {};
+
+      // Pointwise Metrics
+      document.getElementById("metricHmmAcc").innerText = acc.hmm_pointwise_accuracy != null ? `${acc.hmm_pointwise_accuracy}%` : "N/A";
+      const gain = acc.hmm_accuracy_gain != null ? acc.hmm_accuracy_gain : 0;
+      document.getElementById("metricHmmGain").innerText = gain >= 0 ? `+${gain}% vs Classifier` : `${gain}% vs Classifier`;
+      document.getElementById("metricHmmGain").className = gain >= 0 ? "text-xs text-emerald-400 font-medium mt-0.5" : "text-xs text-amber-400 font-medium mt-0.5";
+
+      document.getElementById("metricClfAcc").innerText = acc.classifier_pointwise_accuracy != null ? `${acc.classifier_pointwise_accuracy}%` : "N/A";
+
+      // Sequence & Continuity
+      document.getElementById("metricContinuity").innerText = seq.continuity != null ? `${seq.continuity}%` : "N/A";
+      document.getElementById("metricBreaks").innerText = seq.breaks != null ? `${seq.breaks} Disconnections` : "--";
+
+      document.getElementById("metricF1").innerText = seq.f1_score != null ? `${seq.f1_score}%` : "N/A";
+      document.getElementById("metricPrecRec").innerText = seq.precision != null ? `P: ${seq.precision}% | R: ${seq.recall}%` : "--";
+
+      // Stats & Latency
+      document.getElementById("metricPoints").innerText = m.n_gps_points != null ? m.n_gps_points.toLocaleString() : "--";
+      document.getElementById("metricCandidates").innerText = m.mean_candidates_per_point != null ? `~${m.mean_candidates_per_point.toFixed(1)} cands/pt` : "--";
+
+      document.getElementById("metricLatency").innerText = m.total_latency_ms != null ? `${m.total_latency_ms.toFixed(0)} ms` : "--";
+      const throughput = m.n_gps_points && m.total_latency_ms ? ((m.n_gps_points / m.total_latency_ms) * 1000).toFixed(0) : 0;
+      document.getElementById("metricThroughput").innerText = `${throughput} points/sec`;
+
+      // Render Map Layers
+      renderMapGeo(data.geo);
+    }
+
+    function renderMapGeo(geo) {
+      gpsLayerGroup.clearLayers();
+      predLayerGroup.clearLayers();
+      refLayerGroup.clearLayers();
+
+      if (!geo) return;
+
+      // 1. Raw GPS Observations (Blue Dots)
+      if (geo.gps_track && geo.gps_track.length) {
+        geo.gps_track.forEach(pt => {
+          L.circleMarker(pt, {
+            radius: 2.5,
+            color: "#3b82f6",
+            fillColor: "#60a5fa",
+            fillOpacity: 0.6,
+            weight: 1
+          }).addTo(gpsLayerGroup);
+        });
+      }
+
+      // 2. Reference Route (Amber Dashed Line)
+      if (geo.reference_route && geo.reference_route.length) {
+        geo.reference_route.forEach(seg => {
+          L.polyline(seg, {
+            color: "#f59e0b",
+            weight: 3.5,
+            opacity: 0.9,
+            dashArray: "6, 6"
+          }).addTo(refLayerGroup);
+        });
+      }
+
+      // 3. Predicted Route (Emerald Green Solid Line)
+      if (geo.predicted_route && geo.predicted_route.length) {
+        geo.predicted_route.forEach(seg => {
+          L.polyline(seg, {
+            color: "#10b981",
+            weight: 5,
+            opacity: 0.85
+          }).addTo(predLayerGroup);
+        });
+      }
+
+      // Fit Bounds
+      if (geo.bounds) {
+        currentBounds = geo.bounds;
+        map.fitBounds(geo.bounds, { padding: [30, 30] });
+      }
+    }
+
+    function recenterMap() {
+      if (currentBounds && map) {
+        map.fitBounds(currentBounds, { padding: [30, 30] });
+      }
+    }
+
+    function toggleLayers() {
+      const showGps = document.getElementById("toggleGps").checked;
+      const showPred = document.getElementById("togglePred").checked;
+      const showRef = document.getElementById("toggleRef").checked;
+
+      if (showGps) map.addLayer(gpsLayerGroup); else map.removeLayer(gpsLayerGroup);
+      if (showPred) map.addLayer(predLayerGroup); else map.removeLayer(predLayerGroup);
+      if (showRef) map.addLayer(refLayerGroup); else map.removeLayer(refLayerGroup);
+    }
+
+    // Auto Init on Page Load
+    window.addEventListener("DOMContentLoaded", () => {
+      initMap();
+      testConnection();
+    });
+  </script>
+</body>
+</html>
