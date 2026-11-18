@@ -216,7 +216,9 @@
 
   <script>
     // State
-    let apiBase = "http://localhost:8000";
+    let apiBase = (window.location.origin && window.location.origin.startsWith("http")) 
+      ? window.location.origin 
+      : "http://localhost:8000";
     let map = null;
     let gpsLayerGroup = null;
     let predLayerGroup = null;
@@ -444,6 +446,10 @@
 
     // Auto Init on Page Load
     window.addEventListener("DOMContentLoaded", () => {
+      const defaultOrigin = (window.location.origin && window.location.origin.startsWith("http")) 
+        ? window.location.origin 
+        : "http://localhost:8000";
+      document.getElementById("apiUrlInput").value = defaultOrigin;
       initMap();
       testConnection();
     });

@@ -13,7 +13,7 @@ from time import perf_counter
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -82,6 +82,11 @@ def get_pipeline() -> MapMatchingPipeline:
         pipeline = MapMatchingPipeline()
         logger.info(f"Pipeline ready. Active model: {pipeline.model_name}")
     return pipeline
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    return Response(status_code=204)
 
 
 # --------------------------------------------------
