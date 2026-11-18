@@ -1,0 +1,17 @@
+{
+  "n_candidate_rows": 209541,
+  "accuracy": 0.9106905092559452,
+  "precision": 0.5060390302960422,
+  "recall": 0.9175246955521873,
+  "macro_f1": 0.8005381095916702,
+  "pos_f1": 0.6523112366230678,
+  "log_loss": 0.7186165598988801,
+  "n_points": 19143,
+  "top1": 0.7920911037977328,
+  "top1_conditional": 0.7925050959075942,
+  "candidate_miss_rate": 0.0005223841613122282,
+  "route_continuity": null,
+  "train_time_s": 0.5519718999858014,
+  "inference_time_s": 0.07492750001256354,
+  "inference_time_s_per_1000_candidates": 0.00035751435025724684
+}
