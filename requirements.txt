@@ -6,3 +6,4 @@ matplotlib
 folium
 pyproj
 networkx
+shapely
