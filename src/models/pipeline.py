@@ -4,6 +4,7 @@ Handles raw trip data (.track, .nodes, .arcs, .route), feature building,
 candidate probability estimation, HMM Viterbi decoding, sequence metrics,
 and geo coordinate extraction for UI / Folium rendering.
 """
+import os
 import time
 from pathlib import Path
 from typing import Dict, Any, Optional
@@ -21,7 +22,13 @@ from ..eval.route_metrics import sequence_metrics, route_continuity
 from .hmm import viterbi_decode_variable
 
 DEFAULT_MODEL_PATH = Path("artifacts/classifier.joblib")
-DEFAULT_DATA_ROOT = Path("/Users/kanishka/Downloads/PathSnap_Project/Dataset")
+_env_root = os.environ.get("DATA_ROOT", "/Users/kanishka/Downloads/PathSnap_Project/Dataset")
+DEFAULT_DATA_ROOT = Path(_env_root)
+if not DEFAULT_DATA_ROOT.exists():
+    for _cand in [Path("../PathSnap_Project/Dataset"), Path("data"), Path("../Dataset")]:
+        if _cand.exists():
+            DEFAULT_DATA_ROOT = _cand.resolve()
+            break
 
 
 def make_transition_matrix(net: RoadNetwork, ids1, t1, ids2, t2, gps_step: float, beta: float = 12.0) -> np.ndarray:
