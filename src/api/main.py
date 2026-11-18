@@ -246,7 +246,7 @@ def get_trip_folium_map(
     result = pipe.process_trip(trip_id=trip_id, split=split)
     geo = result["geo"]
 
-    m = folium.Map(location=geo["center"], zoom_start=15, tiles="CartoDB positron")
+    m = folium.Map(location=geo["center"], zoom_start=15, tiles="OpenStreetMap")
 
     # Layer: Raw GPS Track
     gps_layer = folium.FeatureGroup(name="Raw GPS Track (Observations)", show=True)
