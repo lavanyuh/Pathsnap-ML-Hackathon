@@ -11,9 +11,27 @@ def main():
     print("🏆 PATHSNAP: MACHINE LEARNING MODEL SELECTION & TUNING SUMMARY")
     print("=" * 80)
 
-    # 1. Final Tuned LightGBM
+    # 1. Final Tuned LightGBM (from friend's optimization)
+    friend_metrics = ROOT / "results/models/lgbm_tuned/student_test_metrics.json"
+    friend_params = ROOT / "results/optimization/lgbm/best_params.json"
     metrics_path = ROOT / "results/models/lgbm/metrics.json"
-    if metrics_path.exists():
+
+    if friend_metrics.exists() and friend_params.exists():
+        with open(friend_metrics) as f:
+            m = json.load(f)
+        with open(friend_params) as f:
+            p = json.load(f)
+        print("\n1️⃣  TUNED LIGHTGBM TEST PERFORMANCE (student_test):")
+        print(f"   • Accuracy:       {m['accuracy']*100:.2f}%")
+        print(f"   • Macro F1:       {m['macro_f1']:.4f}  <-- Primary Selection Metric")
+        print(f"   • Precision:      {m['precision']*100:.2f}%")
+        print(f"   • Recall:         {m['recall']*100:.2f}%")
+        print(f"   • Top-1 Accuracy: {m['top1']*100:.2f}%")
+        print(f"   • Log Loss:       {m['log_loss']:.4f}")
+        print("\n   Best Hyperparameters (Optuna Bayesian Optimization from results/optimization):")
+        for k, v in p.items():
+            print(f"     - {k:<18}: {v}")
+    elif metrics_path.exists():
         with open(metrics_path) as f:
             m = json.load(f)
         print("\n1️⃣  TUNED LIGHTGBM TEST PERFORMANCE (student_test):")
